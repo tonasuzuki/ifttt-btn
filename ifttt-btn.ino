@@ -1,12 +1,21 @@
 //
 // press the button, send an event message to IFTTT.
-// (only ESP-WROOM-02)
+// (ESP-WROOM-02(ESP8266)/ESP32-WROOM-32(ESP32))
 //
-// 2020/06/06 tonasuzuki
+// 2020/08/01 tonasuzuki
 //
+#ifdef ESP8266
+//include ESP8266 libs
 #include <ESP8266WiFi.h>
-#include <WiFiClient.h>
 #include <ESP8266HTTPClient.h>
+#endif  // ESP8266
+//include ESP32
+#ifdef ESP32
+#include "WiFi.h"
+#include <HTTPClient.h>
+#endif
+
+#include <WiFiClient.h>
 #include <ArduinoOTA.h>
 
 //WLAN configuration.
@@ -21,13 +30,23 @@ const char pass[] = "youe wlan password";
 #define HTTP_HOST "maker.ifttt.com"
 
 //GPIO configurations
+#ifdef ESP8266
 //Number of buttons
 #define BUTTON_NUM 3
 // BUTTON-GPIO number (GPIO16 cannot be used)
 int nButtonPins[] = {14, 12, 13};
 // LED-GPIO number
 #define LED_PIN 5
+#endif // ESP8266
 
+#ifdef ESP32
+//Number of buttons
+#define BUTTON_NUM 3
+// BUTTON-GPIO number (0,2,4,12-15,25-27,32-39.)
+int nButtonPins[] = {25, 26, 15};
+// LED-GPIO number
+#define LED_PIN 4
+#endif // ESP32
 
 //to light-sleep after pressing the button (msec)
 //if not light-sleep,Set to 0
@@ -35,7 +54,7 @@ int nButtonPins[] = {14, 12, 13};
 //#define BUTTON_SLEEP_TIME 0
 
 //WLAN connection retry-count
-#define CONNECT_ERROR_TIME 20
+#define CONNECT_ERROR_TIME 30
 //http post retry-count
 #define HTTP_POST_RETRY 4
 
@@ -225,9 +244,13 @@ boolean DisconnectWifi()
         nTime-=1;
         delay(200);
     }
-    if (nTime>=0) bResult= true;
+    if (nTime>=0) 
+    { 
+        bResult= true;
+        WiFi.mode(WIFI_OFF);
+    }
   }
-  Serial.println("DisconnectWifi() done.");
+  Serial.println("DisconnectWifi()");
   return (bResult);
 }
 
@@ -273,29 +296,44 @@ int SendTrigger(char* pszEventName)
 
 
 //
+#ifdef ESP8266
 void FPMwakeupCallBack(void)
 {
   Serial.println("FPMwakeupCallBack start");
   gpio_pin_wakeup_disable();
   wifi_fpm_close(); // disable force sleep function
 }
+#endif
 
 //
 void ExecLightSleep() {
   int nPin;
   Serial.println("ExecLightSleep() start.");
   DisconnectWifi();
-  WiFi.mode(WIFI_OFF);
+#ifdef ESP8266
   wifi_set_opmode_current(NULL_MODE); 
   wifi_fpm_set_sleep_type(LIGHT_SLEEP_T); 
   wifi_fpm_open();
+#endif  //ESP8266
   for (nPin = 0; (nPin< BUTTON_NUM); nPin++)
   {
 //    Serial.println("gpio_pin_wakeup_enable: %d",nButtonPins[nPin]);
+#ifdef ESP8266
     gpio_pin_wakeup_enable(nButtonPins[nPin], GPIO_PIN_INTR_LOLEVEL);
+#endif  //ESP8266
+#ifdef ESP32
+    gpio_wakeup_enable((gpio_num_t)nButtonPins[nPin], GPIO_INTR_LOW_LEVEL);
+#endif  //ESP32
   }
+  Serial.flush();
+#ifdef ESP8266
   wifi_fpm_set_wakeup_cb(FPMwakeupCallBack); // Set wakeup callback
   wifi_fpm_do_sleep(0xFFFFFFF); // sleep until gpio activity.
+#endif  //ESP8266
+#ifdef ESP32
+  esp_sleep_enable_gpio_wakeup();
+  esp_light_sleep_start();
+#endif  //ESP32
   delay(10);
   Serial.println("ExecLightSleep() wake up.");
 }
